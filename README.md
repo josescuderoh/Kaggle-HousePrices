@@ -1,6 +1,6 @@
 # Kaggle-HousePrices
 
-This a repository for the Kaggle House Prices Challenge described [here](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data).
+This a repository for the Kaggle House Prices Challenge for advanced regression techniques described [here](https://www.kaggle.com/c/house-prices-advanced-regression-techniques/data).
 
 ## File descriptions
 
