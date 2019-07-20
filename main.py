@@ -16,8 +16,9 @@ from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin, clone
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
 
-#Define plotting style
+#Define options
 plt.style.use('ggplot')
+pd.options.mode.chained_assignment = None
 
 #Import dataset
 train = pd.read_csv('train.csv')
@@ -61,8 +62,8 @@ class CategoricalCleaner(BaseEstimator, TransformerMixin):
     def __init__(self):
         pass
     def fit(self, X, y=None):
-        pass
-    def transform(X, y=None):
+        return self
+    def transform(self, X, y=None):
         
         #Substitue others for None according to data_description
         cols = ['MiscFeature', 'Alley', 'GarageType','MasVnrType']
@@ -81,31 +82,35 @@ class NumericCleaner(BaseEstimator, TransformerMixin):
     def __init__(self):
         pass
     def fit(self, X, y=None):
-        pass
-    def transform(X, y=None):
+        return self
+    def transform(self,X, y=None):
         
-        #Substitute LotFrontageValue for median of neighboorhood
-        X['LotFrontage'] = X.groupby(['Neighborhood'])[['LotFrontage']].transform(
+        #Substitute LotFrontageValue for median of corresponding lot area quantile 
+        X.loc[:,'LotAreaCut'] = pd.qcut(X.LotArea,10)
+        X.loc[:,'LotFrontage']=X.groupby(['LotAreaCut'])['LotFrontage'].transform(
                 lambda x: x.fillna(x.median()))
+        
+        #Drop new field
+        X.drop('LotAreaCut', axis=1,inplace= True)
         
         #Substitue others for None according to data_description
         cols = ['PoolQC', 'Fence', 'FireplaceQu', 'GarageQual',
                 'GarageFinish', 'GarageCond', 'BsmtFinType2', 'BsmtExposure', 
-                'GarageYrBlt', 'BsmtFinType1', 'BsmtCond', 'BsmtQual', 
+                'BsmtFinType1', 'BsmtCond', 'BsmtQual', 
                 'BsmtFullBath', 'BsmtHalfBath']
         for col in cols:
-            X[col].fillna(value = 'None', inplace=True) 
+            X.loc[:,col].fillna(value = 'None', inplace=True) 
             
         #Substitue others for 0 according to data_description
         cols = ['MasVnrArea', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF','GarageCars',
                 'GarageArea', 'TotalBsmtSF']
         for col in cols:
-            X[col].fillna(value = 0, inplace=True)
+            X.loc[:,col].fillna(value = 0, inplace=True)
         
         #Substitue others for mode according to data_description
-        cols = ['KitchenQual']
+        cols = ['KitchenQual', 'GarageYrBlt']
         for col in cols:
-            X[col].fillna(value = X[col].mode()[0], inplace=True)
+            X.loc[:,col].fillna(value = X[col].mode()[0], inplace=True)
             
         return X
 
@@ -114,51 +119,51 @@ class OrdinalTransformer(BaseEstimator, TransformerMixin):
     def __init__(self):
         pass
     def fit(self,X, y=None):
-        pass
+        return self
     def transform(self,X, y=None):
         #Map for numerical values
-        X['LandSlope'] = X['LandSlope'].map({
-                "Gtl": 4,
-                "Mod": 3,
-                "Sev": 2})
-        X['LotShape'] = X['LotShape'].map({
+        X.loc[:,'LandSlope'] = X['LandSlope'].map({
+                "Gtl": 3,
+                "Mod": 2,
+                "Sev": 1})
+        X.loc[:,'LotShape'] = X['LotShape'].map({
                 "Reg": 4,
                 "IR1": 3,
                 "IR2": 2,
                 "IR3": 1})
-        X['ExterCond'] = X['ExterCond'].map({
+        X.loc[:,'ExterCond'] = X['ExterCond'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1})
-        X['ExterQual'] = X['ExterQual'].map({
+        X.loc[:,'ExterQual'] = X['ExterQual'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1})
-        X['BsmtQual'] = X['BsmtQual'].map({
+        X.loc[:,'BsmtQual'] = X['BsmtQual'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1,
                 "None": 0})
-        X['BsmtCond'] = X['BsmtCond'].map({
+        X.loc[:,'BsmtCond'] = X['BsmtCond'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1,
                 "None": 0})
-        X['BsmtExposure'] = X['BsmtExposure'].map({
+        X.loc[:,'BsmtExposure'] = X['BsmtExposure'].map({
                 "Gd": 4,
                 "Av": 3,
                 "Mn": 2,
                 "No": 1,
                 "None": 0})
-        X['BsmtFinType1'] = X['BsmtFinType1'].map({
+        X.loc[:,'BsmtFinType1'] = X['BsmtFinType1'].map({
                 "GLQ": 6,
                 "ALQ": 5,
                 "BLQ": 4,
@@ -166,7 +171,7 @@ class OrdinalTransformer(BaseEstimator, TransformerMixin):
                 "LwQ": 2,
                 "Unf": 1,
                 "None": 0})
-        X['BsmtFinType2'] = X['BsmtFinType2'].map({
+        X.loc[:,'BsmtFinType2'] = X['BsmtFinType2'].map({
                 "GLQ": 6,
                 "ALQ": 5,
                 "BLQ": 4,
@@ -174,51 +179,51 @@ class OrdinalTransformer(BaseEstimator, TransformerMixin):
                 "LwQ": 2,
                 "Unf": 1,
                 "None": 0})
-        X['HeatingQC'] = X['HeatingQC'].map({
+        X.loc[:,'HeatingQC'] = X['HeatingQC'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1})
-        X['KitchenQual'] = X['KitchenQual'].map({
+        X.loc[:,'KitchenQual'] = X['KitchenQual'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1})
-        X['FireplaceQu'] = X['FireplaceQu'].map({
+        X.loc[:,'FireplaceQu'] = X['FireplaceQu'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1,
                 "None": 0})
-        X['GarageFinish'] = X['GarageFinish'].map({
+        X.loc[:,'GarageFinish'] = X['GarageFinish'].map({
                 "Fin": 3,
                 "RFn": 2,
                 "Unf": 1,
                 "None": 0})
-        X['GarageQual'] = X['GarageQual'].map({
+        X.loc[:,'GarageQual'] = X['GarageQual'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1,
                 "None": 0})
-        X['GarageCond'] = X['GarageCond'].map({
+        X.loc[:,'GarageCond'] = X['GarageCond'].map({
                 "Ex": 5,
                 "Gd": 4,
                 "TA": 3,
                 "Fa": 2,
                 "Po": 1,
                 "None": 0})
-        X['PoolQC'] = X['PoolQC'].map({
+        X.loc[:,'PoolQC'] = X['PoolQC'].map({
                 "Ex": 4,
                 "Gd": 3,
                 "TA": 2,
                 "Fa": 1,
                 "None": 0})
-        X['Fence'] = X['Fence'].map({
+        X.loc[:,'Fence'] = X['Fence'].map({
                 "GdPrv": 4,
                 "MnPrv": 3,
                 "GdWo": 2,
@@ -273,27 +278,27 @@ ordinal = ["LotShape", "LandSlope", "OverallQual", "OverallCond",
         "BsmtFinType2", "HeatingQC", "KitchenQual", "FireplaceQu", "GarageFinish",
         "GarageQual", "GarageCond", "PoolQC", "Fence"]
 
+#Neighborhodd is needed
 numeric = train.columns.drop(nominal)
 
 ## Build pipelines of transformers
-numerical_transformer = Pipeline(steps=[('num_cleaner', NumericCleaner()),
+numerical_pipeline = Pipeline(steps=[('num_selector', FeatureSelector(feature_names=numeric)),
+                                        ('num_cleaner', NumericCleaner()),
                                         ('ord_transformer', OrdinalTransformer()),
                                         ('num_transformer', 
                                          NumericalTransformer(skew = 1, ordinal= ordinal)),
                                         ('std_scaler', StandardScaler())])
 
-categorical_transformer = Pipeline(steps=[(('cat_cleaner', CategoricalCleaner())),
-                                          ('feature_selector', FeatureSelector(feature_names=nominal)),
-                                          ('one_hot_encoder', OneHotEncoder())])
+categorical_pipeline = Pipeline(steps=[('feature_selector', FeatureSelector(feature_names=nominal)),
+                                       ('cat_cleaner', CategoricalCleaner()),
+                                       ('one_hot_encoder', OneHotEncoder(sparse=False))])
 
 
+#Combine both pipelines for parallel processing using feature union
+preprocessing_pipeline = FeatureUnion(
+        transformer_list=[('categorical_pipeline', categorical_pipeline),
+                          ('numerical_pipeline', numerical_pipeline)])
 
+#Preprocess and get the feature matrix
+test_process = preprocessing_pipeline.fit_transform(train)
 
-## Should I use get_dummies or OneHotEncoding here???
-## Why not include all trnasformations within the pipline, including the map function
-    
-
-##Remember to transform the month properly
-
-# drop two unwanted columns -->>> WHYYY
-all_data.drop("LotAreaCut",axis=1,inplace=True)
