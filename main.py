@@ -289,10 +289,21 @@ numerical_pipeline = Pipeline(steps=[('num_selector', FeatureSelector(feature_na
                                          NumericalTransformer(skew = 1, ordinal= ordinal)),
                                         ('std_scaler', StandardScaler())])
 
+train2 = FeatureSelector(feature_names=numeric).fit_transform(train)
+train2 = NumericCleaner().fit_transform(train2)
+train2 = OrdinalTransformer().fit_transform(train2)
+train2 = NumericalTransformer(skew = 1, ordinal= ordinal).fit_transform(train2)
+train2 = StandardScaler().fit_transform(train2)   ## Removes some things
+
 categorical_pipeline = Pipeline(steps=[('feature_selector', FeatureSelector(feature_names=nominal)),
                                        ('cat_cleaner', CategoricalCleaner()),
                                        ('one_hot_encoder', OneHotEncoder(sparse=False))])
 
+train3 = FeatureSelector(feature_names=nominal).fit_transform(train)
+train3 = CategoricalCleaner().fit_transform(train3)
+train3 = OneHotEncoder(sparse=False).fit_transform(train3)
+
+#Last steps are turning into floats, what can I do to keep the names??
 
 #Combine both pipelines for parallel processing using feature union
 preprocessing_pipeline = FeatureUnion(
@@ -301,4 +312,6 @@ preprocessing_pipeline = FeatureUnion(
 
 #Preprocess and get the feature matrix
 test_process = preprocessing_pipeline.fit_transform(train)
+
+## Selecting important features using a LinearRegression model
 
