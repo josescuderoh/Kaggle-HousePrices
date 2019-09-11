@@ -10,11 +10,12 @@ Created on Mon Jun 10 16:07:57 2019
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import copy
 from scipy.stats import skew
 from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin, clone
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
+from sklearn.linear_model import Lasso
+
 
 #Define options
 plt.style.use('ggplot')
@@ -96,14 +97,13 @@ class NumericCleaner(BaseEstimator, TransformerMixin):
         #Substitue others for None according to data_description
         cols = ['PoolQC', 'Fence', 'FireplaceQu', 'GarageQual',
                 'GarageFinish', 'GarageCond', 'BsmtFinType2', 'BsmtExposure', 
-                'BsmtFinType1', 'BsmtCond', 'BsmtQual', 
-                'BsmtFullBath', 'BsmtHalfBath']
+                'BsmtFinType1', 'BsmtCond', 'BsmtQual']
         for col in cols:
             X.loc[:,col].fillna(value = 'None', inplace=True) 
             
         #Substitue others for 0 according to data_description
         cols = ['MasVnrArea', 'BsmtFinSF1', 'BsmtFinSF2', 'BsmtUnfSF','GarageCars',
-                'GarageArea', 'TotalBsmtSF']
+                'GarageArea', 'TotalBsmtSF', 'BsmtFullBath', 'BsmtHalfBath']
         for col in cols:
             X.loc[:,col].fillna(value = 0, inplace=True)
         
@@ -286,32 +286,33 @@ numerical_pipeline = Pipeline(steps=[('num_selector', FeatureSelector(feature_na
                                         ('num_cleaner', NumericCleaner()),
                                         ('ord_transformer', OrdinalTransformer()),
                                         ('num_transformer', 
-                                         NumericalTransformer(skew = 1, ordinal= ordinal)),
-                                        ('std_scaler', StandardScaler())])
+                                         NumericalTransformer(skew = 1, ordinal= ordinal))])
 
-train2 = FeatureSelector(feature_names=numeric).fit_transform(train)
-train2 = NumericCleaner().fit_transform(train2)
-train2 = OrdinalTransformer().fit_transform(train2)
-train2 = NumericalTransformer(skew = 1, ordinal= ordinal).fit_transform(train2)
-train2 = StandardScaler().fit_transform(train2)   ## Removes some things
-
-categorical_pipeline = Pipeline(steps=[('feature_selector', FeatureSelector(feature_names=nominal)),
+nominal_pipeline = Pipeline(steps=[('feature_selector', FeatureSelector(feature_names=nominal)),
                                        ('cat_cleaner', CategoricalCleaner()),
                                        ('one_hot_encoder', OneHotEncoder(sparse=False))])
-
-train3 = FeatureSelector(feature_names=nominal).fit_transform(train)
-train3 = CategoricalCleaner().fit_transform(train3)
-train3 = OneHotEncoder(sparse=False).fit_transform(train3)
 
 #Last steps are turning into floats, what can I do to keep the names??
 
 #Combine both pipelines for parallel processing using feature union
 preprocessing_pipeline = FeatureUnion(
-        transformer_list=[('categorical_pipeline', categorical_pipeline),
+        transformer_list=[('nominal_pipeline', nominal_pipeline),
                           ('numerical_pipeline', numerical_pipeline)])
 
 #Preprocess and get the feature matrix
-test_process = preprocessing_pipeline.fit_transform(train)
+X = preprocessing_pipeline.fit_transform(pd.concat([train,test], axis = 0))
 
-## Selecting important features using a LinearRegression model
+# Break dataset
+std_scaler = StandardScaler()
+
+Xtrain_scaled = std_scaler.fit_transform(X[:train.shape[0]])
+Xtest_scaled = std_scaler.fit_transform(X[train.shape[0]:]) #********
+
+## Selecting important features using a LASSO model
+
+lasso=Lasso(alpha=0.001)
+lasso.fit(X, y)
+
+# Predicting a new result
+y_pred = regressor.predict(6.5)
 
