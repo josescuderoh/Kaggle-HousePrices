@@ -13,9 +13,12 @@ import matplotlib.pyplot as plt
 from scipy.stats import skew
 from sklearn.base import BaseEstimator, TransformerMixin, RegressorMixin, clone
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline, make_pipeline, FeatureUnion
 from sklearn.linear_model import Lasso
-
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import cross_val_score
+from sklearn.svm import SVR
 
 #Define options
 plt.style.use('ggplot')
@@ -83,6 +86,7 @@ class NumericCleaner(BaseEstimator, TransformerMixin):
     def __init__(self):
         pass
     def fit(self, X, y=None):
+        self.X = X
         return self
     def transform(self,X, y=None):
         
@@ -119,6 +123,7 @@ class OrdinalTransformer(BaseEstimator, TransformerMixin):
     def __init__(self):
         pass
     def fit(self,X, y=None):
+        self.X = X
         return self
     def transform(self,X, y=None):
         #Map for numerical values
@@ -240,7 +245,10 @@ class NumericalTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, skew=0.5, ordinal=[]):
         self.skew = skew
         self.ordinal = ordinal
+    def get_feature_names(self):
+        return self.colnames
     def fit(self, X, y=None):
+        self.colnames = X.columns.tolist()
         return self
     def transform(self, X, y=None):
         skewness = X[X.columns.drop(self.ordinal)].select_dtypes(exclude=['object']).apply(lambda x: skew(x))
@@ -248,20 +256,6 @@ class NumericalTransformer(BaseEstimator, TransformerMixin):
         skewed_idx = skewness[abs(skewness) > self.skew].index  ##Returns the name
         X[skewed_idx] = np.log1p(X[skewed_idx])
         return X
-
-#Custom Transformer that extracts columns passed as argument to its constructor 
-class FeatureSelector( BaseEstimator, TransformerMixin ):
-    #Class Constructor 
-    def __init__( self, feature_names ):
-        self._feature_names = feature_names 
-    
-    #Return self nothing else to do here    
-    def fit( self, X, y = None ):
-        return self 
-    
-    #Method that describes what we need this transformer to do
-    def transform( self, X, y = None ):
-        return X[ self._feature_names ] 
 
 # Select nominal fields
 nominal = ["MSSubClass", "MSZoning", "Street", "Alley", "LandContour",
@@ -282,37 +276,111 @@ ordinal = ["LotShape", "LandSlope", "OverallQual", "OverallCond",
 numeric = train.columns.drop(nominal)
 
 ## Build pipelines of transformers
-numerical_pipeline = Pipeline(steps=[('num_selector', FeatureSelector(feature_names=numeric)),
-                                        ('num_cleaner', NumericCleaner()),
+
+numerical_pipeline = Pipeline(steps=[('num_cleaner', NumericCleaner()),
                                         ('ord_transformer', OrdinalTransformer()),
-                                        ('num_transformer', 
-                                         NumericalTransformer(skew = 1, ordinal= ordinal))])
+                                        ('num_transformer', NumericalTransformer(skew = 1, ordinal= ordinal))])
 
-nominal_pipeline = Pipeline(steps=[('feature_selector', FeatureSelector(feature_names=nominal)),
-                                       ('cat_cleaner', CategoricalCleaner()),
-                                       ('one_hot_encoder', OneHotEncoder(sparse=False))])
+nominal_pipeline = Pipeline(steps=[('cat_cleaner', CategoricalCleaner()),
+                                   ('one_hot_encoder', OneHotEncoder(sparse=False))])
 
-#Last steps are turning into floats, what can I do to keep the names??
+#Combine both pipelines for parallel processing using COlumnTransformer
+preprocessor = ColumnTransformer(
+    transformers=[('num', numerical_pipeline, numeric),
+                  ('cat', nominal_pipeline, nominal)])
+preprocessing_pipeline = Pipeline(steps=[('preprocessor', preprocessor)])
 
-#Combine both pipelines for parallel processing using feature union
-preprocessing_pipeline = FeatureUnion(
-        transformer_list=[('nominal_pipeline', nominal_pipeline),
-                          ('numerical_pipeline', numerical_pipeline)])
 
-#Preprocess and get the feature matrix
+#Fit and transform the complete dataset
 X = preprocessing_pipeline.fit_transform(pd.concat([train,test], axis = 0))
+
+num_names = preprocessing_pipeline.named_steps['preprocessor'].transformers_[0][1].named_steps['num_transformer'].get_feature_names()
+nom_names = list(preprocessing_pipeline.named_steps['preprocessor'].transformers_[1][1].named_steps['one_hot_encoder'].get_feature_names())
+num_names.extend(nom_names)
+
+#Create dataset for visualization
+X_df= pd.DataFrame(data = X, columns =  num_names)
 
 # Break dataset
 std_scaler = StandardScaler()
 
-Xtrain_scaled = std_scaler.fit_transform(X[:train.shape[0]])
-Xtest_scaled = std_scaler.fit_transform(X[train.shape[0]:]) #********
+Xstrain = pd.DataFrame(std_scaler.fit_transform(X_df[:train.shape[0]]), columns = X_df.columns)
+Xstest = pd.DataFrame(std_scaler.fit_transform(X_df[train.shape[0]:]), columns= X_df.columns )
+y_log =  np.log(y)
+
+Xstrain.shape, Xstest.shape
 
 ## Selecting important features using a LASSO model
 
 lasso=Lasso(alpha=0.001)
-lasso.fit(X, y)
+lasso.fit(Xstrain, y_log)
 
-# Predicting a new result
-y_pred = regressor.predict(6.5)
+#%matplotlib qt
 
+# Get the significance coefficients
+
+feat_coef = pd.DataFrame({'importance': lasso.coef_}, index=X_df.columns)
+
+#Get relevant features
+
+#Plot relevant features
+n = feat_coef.shape[0]
+fig, ax = plt.subplots(figsize=(5,n//5))
+
+feat_coef.loc[feat_coef.importance != 0,:]\
+             .sort_values(by='importance') \
+             .plot(kind='barh', ax=ax)
+
+Xftrain = Xstrain[feat_coef.loc[feat_coef.importance != 0,:].index.to_list()]
+Xftrain = Xstrain
+Xftest = Xstest[feat_coef.loc[feat_coef.importance != 0,:].index.to_list()]
+Xftest = Xstest
+
+#%matplotlib inline
+
+#Apply PCA
+
+from sklearn.decomposition import PCA
+
+pca = PCA(n_components=180)
+
+X_train = pca.fit_transform(Xftrain)
+X_test = pca.transform(Xftest)
+
+X_train.shape, X_test.shape
+
+
+##################################################################
+######################## Fit the model ###########################
+##################################################################
+
+#Models
+models = [Lasso(), RandomForestRegressor(), SVR()]
+names = ['LASSO', 'RF', 'SVR']
+
+# Define Metric Function
+def rmse_cv(model, X, y):
+    rmse = np.sqrt(-cross_val_score(model, X, y, scoring='neg_mean_squared_error', cv=5))
+    return rmse
+
+# Evaluate all possible models
+import warnings
+warnings.filterwarnings("ignore")
+
+for name, model in zip(names, models):
+    score = rmse_cv(model, X_train, y_log)
+    print(f'{name}: RMSE Mean: {score.mean()} RMSE STD: {score.std()}')
+
+##################################################################
+###################### Export the results ########################
+##################################################################
+
+rf_regressor = RandomForestRegressor()
+rf_regressor.fit(Xftrain, y_log)
+
+#Predic and transform
+pred = np.exp(rf_regressor.predict(Xftest))
+
+# Export the file
+result=pd.DataFrame({'Id':pd.read_csv('test.csv').Id, 'SalePrice':pred})
+result.to_csv("submission.csv",index=False)
